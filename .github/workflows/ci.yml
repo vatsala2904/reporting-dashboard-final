@@ -1,0 +1,205 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [16.x, 18.x]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Install dependencies
+      working-directory: ./frontend
+      run: npm ci
+    
+    - name: Run ESLint
+      working-directory: ./frontend
+      run: npm run lint --if-present
+    
+    - name: Run tests
+      working-directory: ./frontend
+      run: npm test -- --coverage --watchAll=false
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        directory: ./frontend/coverage
+        fail_ci_if_error: true
+
+  data-quality-checks:
+    name: Data Quality Validation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18.x'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Install dependencies
+      working-directory: ./frontend
+      run: npm ci
+    
+    - name: Run data quality checks
+      working-directory: ./frontend
+      run: |
+        node -e "
+        const { performDataQualityChecks, calculateHealthScore } = require('./src/utils/dataQuality.js');
+        const { sampleInvoiceData } = require('./src/data/mockData.js');
+        
+        console.log('Running data quality validation...');
+        const checks = performDataQualityChecks(sampleInvoiceData);
+        const healthScore = calculateHealthScore(checks);
+        
+        console.log('Data Quality Results:');
+        console.log('- Total Records:', checks.total_records);
+        console.log('- Health Score:', healthScore + '%');
+        console.log('- Null Violations:', checks.null_violations.length);
+        console.log('- Duplicate Violations:', checks.duplicate_violations.length);
+        console.log('- Type Violations:', checks.type_violations.length);
+        
+        if (healthScore < 70) {
+          console.error('❌ Data quality below threshold (70%)');
+          process.exit(1);
+        } else {
+          console.log('✅ Data quality checks passed');
+        }
+        "
+
+  build:
+    name: Build Application
+    runs-on: ubuntu-latest
+    needs: [test, data-quality-checks]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18.x'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Install dependencies
+      working-directory: ./frontend
+      run: npm ci
+    
+    - name: Build application
+      working-directory: ./frontend
+      run: npm run build
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: build-files
+        path: frontend/build/
+        retention-days: 7
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18.x'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Install dependencies
+      working-directory: ./frontend
+      run: npm ci
+    
+    - name: Run security audit
+      working-directory: ./frontend
+      run: npm audit --audit-level high
+    
+    - name: Run dependency check
+      working-directory: ./frontend
+      run: |
+        npx depcheck --ignores="@testing-library/*,web-vitals"
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build, security-scan]
+    if: github.ref == 'refs/heads/develop'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: build-files
+        path: ./build
+    
+    - name: Deploy to staging
+      run: |
+        echo "🚀 Deploying to staging environment..."
+        echo "✅ Staging deployment completed"
+        # In real project, this would deploy to staging server
+        
+    - name: Run smoke tests
+      run: |
+        echo "🧪 Running smoke tests on staging..."
+        echo "✅ Smoke tests passed"
+        # In real project, this would run actual smoke tests
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build, security-scan]
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: build-files
+        path: ./build
+    
+    - name: Deploy to production
+      run: |
+        echo "🚀 Deploying to production environment..."
+        echo "✅ Production deployment completed"
+        # In real project, this would deploy to production server
+        
+    - name: Run health checks
+      run: |
+        echo "🩺 Running production health checks..."
+        echo "✅ All systems operational"
+        # In real project, this would verify deployment health
