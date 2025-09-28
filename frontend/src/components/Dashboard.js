@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Container,
   Grid,
@@ -10,7 +10,6 @@ import {
   Chip,
   Alert,
   Button,
-  TextField,
   FormControl,
   InputLabel,
   Select,
@@ -21,7 +20,6 @@ import {
   CheckCircle,
   Warning,
   Error,
-  Refresh,
   CloudUpload,
   Assessment
 } from '@mui/icons-material';
@@ -95,11 +93,6 @@ const Dashboard = () => {
     return accountMatch && monthMatch;
   });
 
-  const getStatusColor = (score) => {
-    if (score >= 90) return 'success';
-    if (score >= 70) return 'warning';
-    return 'error';
-  };
 
   const getStatusIcon = (score) => {
     if (score >= 90) return <CheckCircle />;
